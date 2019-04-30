@@ -1,4 +1,5 @@
 from scipy.stats import multivariate_normal
+import numpy as np
 
 def Multinorm_post_marginal_likelihood(mu_0, kappa_0, nu_0, Psi_0):
     """
