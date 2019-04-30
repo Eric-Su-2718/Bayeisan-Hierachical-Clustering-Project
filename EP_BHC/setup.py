@@ -13,7 +13,6 @@ setup(
     keywords = ["BHC", "merge_nodes", "likelihood"]
     install_requires = [
         "numpy", 
-        "itertools",
         "scipy.special",
         "cython"
     ],
