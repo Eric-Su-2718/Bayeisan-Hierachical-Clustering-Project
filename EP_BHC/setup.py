@@ -13,7 +13,6 @@ setup(
     keywords = ["BHC", "merge_nodes", "likelihood"],
     install_requires = [
         "numpy", 
-        "scipy.special",
         "cython"
     ],
      classifiers=[
