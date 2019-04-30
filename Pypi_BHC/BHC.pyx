@@ -1,6 +1,3 @@
-%load_ext cython
-
-%%cython
 
 import numpy as np
 import itertools as it
