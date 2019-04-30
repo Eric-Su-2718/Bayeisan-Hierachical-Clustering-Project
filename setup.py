@@ -3,7 +3,7 @@ from distutils.core import setup
 setup(
     name = "BHC",
     package = ["BHC"],
-    version = "1.1",
+    version = "1.2",
     license = "MIT",
     description = "A Python package to generate Bayesian hierarchical clusters to a supplied data",
     authors = "Eric Su and Min Chul Kim",
