@@ -1,8 +1,8 @@
 from distutils.core import setup
 
 setup(
-    name = "Pypi_BHC",
-    package = ["Pypi_BHC"],
+    name = "PyPi_BHC",
+    package = ["PyPi_BHC"],
     version = "1.0",
     license = "MIT",
     description = "A Python package to generate Bayesian hierarchical clusters to a supplied data",
