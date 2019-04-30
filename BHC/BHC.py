@@ -3,7 +3,7 @@ import itertools as it
 from scipy.special import gamma
 from scipy.special import multigammaln
 
-def BHC(data, likelihood, alpha):
+def BHC(data, log_likelihood, alpha):
     """
     Bayesian hierarchical clustering algorithm, direct implementation from paper.
     
@@ -11,8 +11,8 @@ def BHC(data, likelihood, alpha):
     ----------
     data : 2D numpy array
         Data with rows as observations and columns as variables.
-    likelihood : function
-        Function that returns the marginal likelihood of data in BHC model.
+    log_likelihood : function
+        Function that returns the log marginal likelihood of data in BHC model.
     alpha : float
         Concentration parameter in model.
         
@@ -43,9 +43,9 @@ def BHC(data, likelihood, alpha):
             Dj = D[j]
             Dk = Node.merge_node(Di, Dj)
             
-            likelihood_i = likelihood(Di.data)
-            likelihood_j = likelihood(Dj.data)
-            likelihood_k = likelihood(Dk.data)
+            likelihood_i = np.exp(log_likelihood(Di.data))
+            likelihood_j = np.exp(log_likelihood(Dj.data))
+            likelihood_k = np.exp(log_likelihood(Dk.data))
             
             pi_k = Dk.pi_k
 
