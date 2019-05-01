@@ -1,0 +1,51 @@
+n = 10
+y1 = np.random.multivariate_normal([0, 0], np.eye(2) * 0.1, n)
+y2 = np.random.multivariate_normal([3, 0], np.eye(2) * 0.3, n)
+y3 = np.random.multivariate_normal([0, 3], np.eye(2) * 0.5, n)
+y4 = np.random.multivariate_normal([-3, 3], np.eye(2) * 0.7, n)
+y5 = np.random.multivariate_normal([0, -3], np.eye(2) * 0.9, n)
+simu_true_cluster = np.repeat(list(range(1, 6)), 10)
+
+simulate_data = np.vstack((y1, y2, y3, y4, y5))
+
+import matplotlib.pyplot as plt
+plt.scatter(simulate_data[:, 0], simulate_data[:, 1], s = 50)
+plt.show()
+
+%matplotlib inline
+import numpy as np
+import pandas as pd
+
+def purity_score(cluster_true, cluster_pred):
+    """
+    Function that returns the purity scores of each cluster given the predicted clusters and the true clusters
+    """
+    
+    def most_common(lst):
+        """Helper function that finds the most frequent item in a list"""
+        return max(set(lst), key = lst.count)
+    
+    purity = []
+    for cluster in set(cluster_pred):
+        np.where(np.array(cluster_pred) == cluster)
+        cluster_element = [cluster_true[index] for index in np.where(np.array(cluster_pred) == cluster)[0]]
+        dominant_item = most_common(cluster_element)
+        purity.append(cluster_element.count(dominant_item) / len(cluster_element))
+        
+    return purity
+    
+import BHC
+p = simulate_data.shape[1]
+likelihood = log_Multinorm_post_marginal_likelihood(mu_0 = np.zeros(p), kappa_0 = 1, nu_0 = p + 1, Psi_0 = np.eye(p))
+BHC_clusters, rks = BHC_cython(simulate_data, likelihood, 1)
+
+clust_n = simulate_data.shape[0] - next(x for x, val in enumerate(rks) if val < 0.5) + 1
+purity_BHC_simu = np.mean(purity_score(simu_true_cluster, BHC_clusters[-clust_n]))
+
+plt.scatter(simulate_data[:, 0], simulate_data[:, 1], c = BHC_clusters[-clust_n], s = 50)
+plt.title("BHC on simulated data")
+plt.show()
+
+%timeit -r3 -n1 BHC.BHC(simulate_data, likelihood, 1)
+
+%timeit -r3 -n1 BHC_cython(simulate_data, likelihood, 1)
