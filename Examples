@@ -1,0 +1,74 @@
+glass = pd.read_csv("data/glass.data", index_col=0, header=None)
+iris = pd.read_csv("data/iris.data", header=None)
+glass_x = np.asarray(glass.iloc[:, 0:9])
+glass_y = np.asarray(glass.iloc[:, 9])
+iris_x = np.asarray(iris.iloc[:, 0:4])
+iris_y = np.asarray(iris.iloc[:, 4])
+
+sample_index_glass = np.random.choice(glass_x.shape[0], 100, replace = False)
+glass_x = glass_x[sample_index_glass, :]
+glass_y = glass_y[sample_index_glass, ]
+
+sample_index_iris = np.random.choice(iris.shape[0], 50, replace = False)
+iris_x = iris_x[sample_index_iris, :]
+iris_y = iris_y[sample_index_iris, ]
+
+p = glass_x.shape[1]
+likelihood = log_Multinorm_post_marginal_likelihood(mu_0 = np.zeros(p), kappa_0 = 1, nu_0 = p + 1, Psi_0 = np.eye(p))
+glass_BHC_clusters, glass_rks = BHC_cython(glass_x, likelihood, 1)
+
+clust_n_glass = glass_x.shape[0] - next(x for x, val in enumerate(glass_rks) if val < 0.5) + 1
+purity_BHC_glass = np.mean(purity_score(glass_y, glass_BHC_clusters[-clust_n_glass]))
+
+iris = pd.read_csv("data/iris.data", header=None)
+iris_x = np.asarray(iris.iloc[:, 0:4])
+iris_y = np.asarray(iris.iloc[:, 4])
+sample_index_iris = np.random.choice(iris.shape[0], 50, replace = False)
+iris_x = iris_x[sample_index_iris, :]
+iris_y = iris_y[sample_index_iris, ]
+
+p = iris_x.shape[1]
+likelihood = log_Multinorm_post_marginal_likelihood(mu_0 = np.zeros(p), kappa_0 = 1, nu_0 = p + 1, Psi_0 = np.eye(p))
+iris_BHC_clusters, iris_rks = BHC_cython(iris_x, likelihood, 1)
+
+clust_n_iris = iris_x.shape[0] - next(x for x, val in enumerate(iris_rks) if val < 0.5) + 1
+purity_BHC_iris = np.mean(purity_score(iris_y, iris_BHC_clusters[-clust_n_iris]))
+
+#hierarchical clustering on simulated dataset
+from scipy.cluster.hierarchy import linkage, cut_tree
+HC = linkage(simulate_data, 'single')
+HC_cluster = cut_tree(HC, clust_n)
+purity_HC_simu = np.mean(purity_score(simu_true_cluster, HC_cluster.flatten()))
+
+#k-means clustering on simulated dataset
+from sklearn.cluster import KMeans
+kmeans = KMeans(n_clusters = clust_n, random_state=0).fit(simulate_data)
+kmeans_cluster = kmeans.labels_
+purity_KM_simu = np.mean(purity_score(simu_true_cluster, kmeans_cluster))
+
+#hierarchical clustering on glass dataset
+HC = linkage(glass_x, 'single')
+HC_cluster = cut_tree(HC, clust_n_glass)
+purity_HC_glass = np.mean(purity_score(glass_y, HC_cluster.flatten()))
+
+#k-means clustering on glass dataset
+kmeans = KMeans(n_clusters = clust_n_glass, random_state=0).fit(glass_x)
+kmeans_cluster = kmeans.labels_
+purity_KM_glass = np.mean(purity_score(glass_y, kmeans_cluster))
+
+#hierarchical clustering on iris dataset
+HC = linkage(iris_x, 'single')
+HC_cluster = cut_tree(HC, clust_n_iris)
+purity_HC_iris = np.mean(purity_score(iris_y, HC_cluster.flatten()))
+
+#k-means clustering on iris dataset
+kmeans = KMeans(n_clusters = clust_n_iris, random_state=0).fit(iris_x)
+kmeans_cluster = kmeans.labels_
+purity_KM_iris = np.mean(purity_score(iris_y, kmeans_cluster))
+
+purity_df = np.array([[purity_HC_simu, purity_KM_simu, purity_BHC_simu], 
+                     [purity_HC_glass, purity_KM_glass, purity_BHC_glass],
+                     [purity_HC_iris, purity_KM_iris, purity_BHC_iris]])
+purity_df = pd.DataFrame(purity_df, columns = ("Hierarchical clustering", "K-means", "BHC"),
+                        index = ("Simulated", "Glass", "Iris"))
+purity_df
