@@ -1,0 +1,328 @@
+import numpy as np
+import itertools as it
+from scipy.special import gamma
+from scipy.special import multigammaln
+
+def BHC(data, log_likelihood, alpha):
+    """
+    Bayesian hierarchical clustering algorithm, direct implementation from paper.
+    
+    Parameters
+    ----------
+    data : 2D numpy array
+        Data with rows as observations and columns as variables.
+    log_likelihood : function
+        Function that returns the log marginal likelihood of data in BHC model.
+    alpha : float
+        Concentration parameter in model.
+        
+    Returns
+    -------
+    T_record : list(list(int))
+        Cluster structure in each iteration.
+    rk_record : list(float)
+        Merge probability (rk) in each iteration.
+    """
+    
+    n = data.shape[0]
+    p = data.shape[1]
+    c = n
+    D = dict((index, Node(obs.reshape(-1, p), alpha)) for index, obs in enumerate(data))
+    T = list(range(n))
+    T_record = list(T)
+    rk_record = [1]
+    
+    while c > 1:
+        max_rk = float('-Inf')
+        node_merge = None
+        left_merge = -1
+        right_merge = -1
+        
+        for i, j in it.combinations(D.keys(), 2):
+            Di = D[i]
+            Dj = D[j]
+            Dk = Node.merge_node(Di, Dj)
+            
+            likelihood_i = np.exp(log_likelihood(Di.data))
+            likelihood_j = np.exp(log_likelihood(Dj.data))
+            likelihood_k = np.exp(log_likelihood(Dk.data))
+            
+            pi_k = Dk.pi_k
+
+            rk = (pi_k * likelihood_k) / (pi_k * likelihood_k + (1 - pi_k) * likelihood_i * likelihood_j)
+
+            if rk > max_rk:
+                max_rk = rk
+                node_merge = Dk
+                left_merge = i
+                right_merge = j
+        
+        #delete merged nodes and store new node
+        del D[right_merge]
+        D[left_merge] = node_merge
+
+        #store the current tree structure and value of rk
+        for item_index, node_index in enumerate(T):
+            if node_index == right_merge:
+                T[item_index] = left_merge
+        T_record.append(list(T))
+        rk_record.append(max_rk)
+        
+        c -= 1
+        
+    return T_record, rk_record
+        
+
+class Node(object):
+    """
+    Node class used in Bayesian hierarchical clustering algorithm. Main purpose is to store values of dk and pi_k for each node.
+    
+    Attributes
+    ----------
+    data : 2D numpy array
+        Data with rows as observations and columns as variables.
+    dk : float
+        Some kind of number for computing probabilities
+    pi_k : float
+        For to compute merge probability
+        
+    Methods
+    -------
+    __init__(self, data, likelihood, alpha = 1)
+        Instantiation operation.
+    merge_node(cls, node1, node2, alpha = 1)
+        Method that merges two Nodes into one new Node and return the new Node.
+    """
+    
+    def __init__(self, data, alpha = 1, dk = 1, pi_k = 1):
+        """
+        Instantiation operation.
+        
+        Parameters
+        ----------
+        data : 2D numpy array
+            Data with rows as observations and columns as variables.
+        likelihood : function
+            Function that returns the likelihood of data, sampling distribution in BHC model.
+        alpha : float
+            Concentration parameter in model.
+        log_dk : float
+            Cached probability variable. Do not define if the node is a leaf.
+        log_pi : float
+            Cached probability variable. Do not define if the node is a leaf.
+        """
+        
+        #initialized according to paper
+        self.data = data
+        self.dk = dk
+        self.pi_k = pi_k
+
+    @classmethod
+    def merge_node(cls, node1, node2, alpha = 1):
+        """
+        Merge two Nodes into one new Node and return the new Node.
+        
+        Parameters
+        ----------
+        node1 : Node
+            First Node.
+        node2 : Node
+            Second Node.
+        """
+
+        data = np.vstack((node1.data, node2.data))
+
+        nk = data.shape[0]
+        dk = alpha * gamma(nk) + node1.dk * node2.dk
+        pi_k = alpha * gamma(nk) / dk
+
+        return cls(data, alpha, dk, pi_k)
+        
+        
+from scipy.special import multigammaln
+import numpy as np
+
+def log_Multinorm_post_marginal_likelihood(mu_0, kappa_0, nu_0, Psi_0):
+    """
+    Returns a function that computes the marginal likelihood 
+    for a Normal-inverse-Wishart model with specifies data and prior parameters.
+    """
+        
+    def log_marginal_likelihood(data):
+        
+        n = data.shape[0]
+        p = data.shape[1]
+        xbar = data.mean(axis = 0)
+    
+        #update posterior parameters
+        kappa_n = kappa_0 + n
+        mu_n = (kappa_0 * mu_0 + n * xbar) / kappa_n
+        nu_n = nu_0 + n
+    
+        if (n == 1):
+            C = np.zeros((p, p))
+        else:
+            C = (n - 1) * np.cov(data.T)
+        Psi_n = Psi_0 + C + ((n * kappa_0) / (kappa_n)) * np.dot((xbar - mu_0).reshape(-1, p).T, (xbar - mu_0).reshape(-1, p))
+    
+        return -(n * p / 2) * (np.log(np.pi)) + multigammaln(nu_n / 2, p) - multigammaln(nu_0 / 2, p)) + (nu_0 / 2) * np.log(np.abs(np.linalg.det(Psi_0)**)) - (nu_n / 2) * np.log(np.abs(np.linalg.det(Psi_n)))) + (p / 2) * (np.log(kappa_0) - np.log(kappa_n))
+
+    return log_marginal_likelihood
+    
+%load_ext cython
+
+%%cython
+import numpy as np
+import itertools as it
+from scipy.special import gamma
+from scipy.special import multigammaln
+from numpy.math cimport INFINITY
+from scipy.stats import multivariate_normal
+cimport numpy as np
+
+
+def BHC_cython(data, log_likelihood, alpha):
+    """`
+    Bayesian hierarchical clustering algorithm, direct implementation from paper.
+    
+    Parameters
+    ----------
+    data : 2D numpy array
+        Data with rows as observations and columns as variables.
+    log_likelihood : function
+        Function that returns the log marginal likelihood of data in BHC model.
+    alpha : float
+        Concentration parameter in model.
+        
+    Returns
+    -------
+    T_record : list(list(int))
+        Cluster structure in each iteration.
+    rk_record : list(float)
+        Merge probability (rk) in each iteration.
+    """
+    
+    cdef int n, c, i, j
+    cdef float max_rk
+    cdef int merge_index1, merge_index2
+    cdef double log_pi_k, log_rk
+    cdef int node_index, item_index
+    cdef double log_likelihood_i, log_likelihood_j, log_likelihood_k
+
+    
+    n = data.shape[0]
+    p = data.shape[1]
+    c = n
+    D = dict((index, Node(obs.reshape(-1, p), alpha)) for index, obs in enumerate(data))
+    T = list(range(n))
+    T_record = list(T)
+    rk_record = [1]
+    
+    while c > 1:
+        max_rk = -INFINITY
+        node_merge = None
+        merge_index1 = -1
+        merge_index2 = -1
+        
+        for i, j in it.combinations(D.keys(), 2):
+            Di = D[i]
+            Dj = D[j]
+            Dk = Node.merge_node(Di, Dj)
+            
+            log_likelihood_i = log_likelihood(Di.data)
+            log_likelihood_j = log_likelihood(Dj.data)
+            log_likelihood_k = log_likelihood(Dk.data)
+            
+            log_pi_k = Dk.log_pi_k
+
+            log_rk = (log_pi_k + log_likelihood_k) - np.logaddexp((log_pi_k + log_likelihood_k), np.log(1 - np.exp(log_pi_k)) + log_likelihood_i + log_likelihood_j)
+
+            if np.exp(log_rk) > max_rk:
+                max_rk = np.exp(log_rk)
+                node_merge = Dk
+                merge_index1 = i
+                merge_index2 = j
+                
+        #delete merged nodes and store new node
+        del D[merge_index2]
+        D[merge_index1] = node_merge
+
+        #store the current tree structure and value of rk
+        for item_index, node_index in enumerate(T):
+            if node_index == merge_index2:
+                T[item_index] = merge_index1
+        T_record.append(list(T))
+        rk_record.append(max_rk)
+        
+        c -= 1
+        
+    return T_record, rk_record
+        
+
+class Node(object):
+    """
+    Node class used in Bayesian hierarchical clustering algorithm. Main purpose is to store values of dk and pi_k for each node.
+    
+    Attributes
+    ----------
+    data : 2D numpy array
+        Data with rows as observations and columns as variables.
+    dk : float
+        Some kind of number for computing probabilities
+    pi_k : float
+        For to compute merge probability
+        
+    Methods
+    -------
+    __init__(self, data, likelihood, alpha = 1)
+        Instantiation operation.
+    merge_node(cls, node1, node2, alpha = 1)
+        Method that merges two Nodes into one new Node and return the new Node.
+    """
+    
+    def __init__(self, data, alpha = 1, log_dk = 0, log_pi_k = 0):
+        """
+        Instantiation operation.
+        
+        Parameters
+        ----------
+        data : 2D numpy array
+            Data with rows as observations and columns as variables.
+        likelihood : function
+            Function that returns the likelihood of data, sampling distribution in BHC model.
+        alpha : float
+            Concentration parameter in model.
+        log_dk : float
+            Cached probability variable. Do not define if the node is a leaf.
+        log_pi : float
+            Cached probability variable. Do not define if the node is a leaf.
+        """
+        
+        #initialized according to paper
+        self.data = data
+        self.log_dk = log_dk
+        self.log_pi_k = log_pi_k
+
+    @classmethod
+    def merge_node(cls, node1, node2, alpha = 1):
+        """
+        Merge two Nodes into one new Node and return the new Node.
+        
+        Parameters
+        ----------
+        node1 : Node
+            First Node.
+        node2 : Node
+            Second Node.
+        """
+
+        cdef np.ndarray[dtype = double, ndim = 2] data
+        cdef double nk
+        
+        data = np.vstack((node1.data, node2.data))
+
+        nk = data.shape[0]
+        log_dk = np.logaddexp(np.log(alpha) + np.log(gamma(nk)), node1.log_dk + node2.log_dk)
+        log_pi_k = np.log(alpha) + np.log(gamma(nk)) - log_dk
+
+        return cls(data, alpha, log_dk, log_pi_k)
